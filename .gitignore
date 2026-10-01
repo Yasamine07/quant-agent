@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 数据与状态
+*.db
+*.sqlite3
+data/
+
+# 密钥
+.env
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 测试与临时
+.pytest_cache/
+*.log

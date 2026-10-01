@@ -1,0 +1,35 @@
+# 量化智能体配置
+data:
+  feed: yahoo            # yahoo=真实行情(美股)  synthetic=离线演示数据
+  lookback_days: 500     # 回测/信号使用的历史天数
+
+strategy:
+  name: ma_cross         # ma_cross | rsi
+  params:
+    fast: 10
+    slow: 30
+    # rsi 策略参数: oversold: 30, overbought: 70, period: 14
+
+portfolio:
+  initial_cash: 10000.0  # 模拟盘初始资金(USD)
+  commission: 0.001      # 单边手续费率 0.1%
+
+risk:
+  max_position_pct: 0.20 # 单标的最大仓位占总权益比例
+  stop_loss_pct: 0.08    # 止损线：浮亏 8% 触发卖出
+  max_drawdown_pct: 0.20 # 回撤超过 20% 停止开新仓
+
+agent:
+  poll_interval_sec: 60  # 自动交易轮询间隔（秒）
+  symbols: ["AAPL", "NVDA", "MSFT"]
+
+broker:
+  paper: true            # true=模拟盘执行；false=尝试接真实券商(需密钥)
+  alpaca:
+    base_url: https://paper-api.alpaca.markets
+
+api:
+  host: 127.0.0.1
+  port: 8000
+
+db: quant.db             # SQLite 状态/交易/权益持久化文件

@@ -1,0 +1,34 @@
+# 离线演示配置：无网环境下全流程可跑（合成行情）
+data:
+  feed: synthetic
+  lookback_days: 500
+
+strategy:
+  name: ma_cross
+  params:
+    fast: 10
+    slow: 30
+
+portfolio:
+  initial_cash: 10000.0
+  commission: 0.001
+
+risk:
+  max_position_pct: 0.20
+  stop_loss_pct: 0.08
+  max_drawdown_pct: 0.20
+
+agent:
+  poll_interval_sec: 10
+  symbols: ["DEMO"]
+
+broker:
+  paper: true
+  alpaca:
+    base_url: https://paper-api.alpaca.markets
+
+api:
+  host: 127.0.0.1
+  port: 8000
+
+db: quant.db
