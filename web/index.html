@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化智能体 · 看板</title>
+<style>
+  :root { --bg:#0f1420; --card:#171e2e; --line:#232c40; --txt:#e6ebf5; --sub:#8b97ad;
+          --up:#f6465d; --down:#2ebd85; --accent:#4f8cff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; padding:20px; }
+  .wrap { max-width:1200px; margin:0 auto; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  h1 { font-size:22px; }
+  .badge { padding:4px 12px; border-radius:20px; font-size:13px; font-weight:600; }
+  .badge.on { background:rgba(46,190,141,.15); color:var(--down); }
+  .badge.off { background:rgba(246,70,93,.15); color:var(--up); }
+  .eq { margin-left:auto; font-size:15px; color:var(--sub); }
+  .eq b { color:var(--txt); font-size:19px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .controls { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  .field { display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--sub); }
+  select, input { background:#0f1420; border:1px solid var(--line); color:var(--txt); border-radius:8px; padding:8px 12px; font-size:14px; }
+  button { background:var(--accent); border:none; color:#fff; border-radius:8px; padding:9px 18px; font-size:14px; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--sub); }
+  button.danger { background:var(--up); }
+  button:hover { filter:brightness(1.1); }
+  .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; }
+  .m { background:#0f1420; border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .m .k { font-size:12px; color:var(--sub); }
+  .m .v { font-size:20px; font-weight:700; margin-top:4px; }
+  .m .v.up { color:var(--up); } .m .v.down { color:var(--down); }
+  .chart { height:360px; width:100%; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--sub); font-weight:500; }
+  .tag { padding:2px 8px; border-radius:6px; font-size:12px; }
+  .tag.buy { background:rgba(46,190,141,.15); color:var(--down); }
+  .tag.sell { background:rgba(246,70,93,.15); color:var(--up); }
+  .tag.hold { background:rgba(139,151,173,.15); color:var(--sub); }
+  .err { background:rgba(246,70,93,.12); color:#ff8b9b; border:1px solid rgba(246,70,93,.3); padding:10px 14px; border-radius:8px; margin-bottom:14px; display:none; }
+  h3 { font-size:15px; margin-bottom:12px; color:var(--txt); }
+  footer { color:var(--sub); font-size:12px; margin-top:20px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📊 量化智能体</h1>
+    <span id="statusBadge" class="badge off">未运行</span>
+    <div class="eq">账户权益 <b id="equityVal">--</b> <span id="cashVal" style="font-size:13px"></span></div>
+  </header>
+
+  <div id="errBox" class="err"></div>
+
+  <div class="card">
+    <div class="controls">
+      <div class="field"><label>标的</label>
+        <select id="symSel"></select></div>
+      <div class="field"><label>策略</label>
+        <select id="stratSel">
+          <option value="ma_cross">双均线 (10/30)</option>
+          <option value="rsi">RSI 超买超卖</option>
+        </select></div>
+      <div class="field"><label>回测天数</label>
+        <input id="daysInput" type="number" value="500" min="60" max="1500"></div>
+      <button id="runBt">运行回测</button>
+      <button id="agentStart" class="ghost">▶ 启动自动交易</button>
+      <button id="agentStop" class="ghost">⏹ 停止自动交易</button>
+    </div>
+  </div>
+
+  <div class="card"><div class="metrics" id="metricsRow">
+    <div class="m"><div class="k">总收益率</div><div class="v" id="m_total">--</div></div>
+    <div class="m"><div class="k">年化收益率</div><div class="v" id="m_annual">--</div></div>
+    <div class="m"><div class="k">最大回撤</div><div class="v" id="m_dd">--</div></div>
+    <div class="m"><div class="k">夏普比率</div><div class="v" id="m_sharpe">--</div></div>
+    <div class="m"><div class="k">胜率</div><div class="v" id="m_win">--</div></div>
+    <div class="m"><div class="k">交易笔数</div><div class="v" id="m_trades">--</div></div>
+    <div class="m"><div class="k">买入持有基准</div><div class="v" id="m_bh">--</div></div>
+  </div></div>
+
+  <div class="card"><h3>权益曲线（策略 vs 买入持有）</h3><div id="equityChart" class="chart"></div></div>
+  <div class="card"><h3 id="klineTitle">行情与买卖信号</h3><div id="klineChart" class="chart"></div></div>
+
+  <div class="card"><h3>当前持仓</h3><table><thead><tr>
+    <th>标的</th><th>数量</th><th>成本价</th></tr></thead><tbody id="posBody">
+    <tr><td colspan="3" style="color:var(--sub)">暂无持仓</td></tr></tbody></table></div>
+
+  <div class="card"><h3>交易记录（最近 100 笔）</h3><table><thead><tr>
+    <th>时间</th><th>标的</th><th>方向</th><th>数量</th><th>成交价</th><th>盈亏</th><th>原因</th></tr></thead>
+    <tbody id="tradeBody"><tr><td colspan="7" style="color:var(--sub)">暂无记录</td></tr></tbody></table></div>
+
+  <footer>仅限学习与研究，不构成投资建议 · 模拟盘模式不涉及真实资金</footer>
+</div>
+
+<script src="vendor/echarts.min.js"></script>
+<script>window.echarts||document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"><\/script>')</script>
+<script>
+const $ = id => document.getElementById(id);
+let eqChart = null, klChart = null;
+const fmtPct = x => x===undefined||x===null ? '--' : (x*100).toFixed(2)+'%';
+const fmtNum = x => x===undefined||x===null ? '--' : Number(x).toLocaleString('en-US',{maximumFractionDigits:2});
+
+function showErr(msg){ const e=$('errBox'); e.style.display = msg?'block':'none'; e.textContent = msg||''; }
+
+async function api(path, opts){
+  const r = await fetch(path, opts);
+  if(!r.ok){ const t = await r.text().catch(()=>''); throw new Error(t || r.statusText); }
+  return r.json();
+}
+
+async function init(){
+  try{
+    const s = await api('/api/strategies');
+    $('symSel').innerHTML = s.symbols.map(x=>`<option value="${x}">${x}</option>`).join('');
+  }catch(e){ showErr('初始化失败: '+e.message); }
+  renderCharts();
+  await runBacktest();
+  pollState();
+  setInterval(pollState, 5000);
+  $('runBt').onclick = runBacktest;
+  $('agentStart').onclick = async ()=>{ try{ await api('/api/agent/start',{method:'POST'}); showErr(''); pollState(); }catch(e){ showErr(e.message); } };
+  $('agentStop').onclick  = async ()=>{ try{ await api('/api/agent/stop',{method:'POST'}); pollState(); }catch(e){ showErr(e.message); } };
+}
+
+function renderCharts(){
+  eqChart = echarts.init($('equityChart'));
+  klChart = echarts.init($('klineChart'));
+  window.addEventListener('resize', ()=>{ eqChart.resize(); klChart.resize(); });
+}
+
+async function runBacktest(){
+  const q = new URLSearchParams({ symbol:$('symSel').value, strategy:$('stratSel').value,
+                                  days:$('daysInput').value||500 });
+  showErr('');
+  try{
+    const d = await api('/api/backtest?'+q);
+    renderMetrics(d.metrics);
+    renderEquity(d.curve);
+    renderKline(d.curve, d.trades);
+    renderTrades(d.trades);
+  }catch(e){ showErr('回测失败: '+e.message); }
+}
+
+function renderMetrics(m){
+  $('m_total').textContent = fmtPct(m.total_return);
+  $('m_annual').textContent = fmtPct(m.annualized_return);
+  $('m_dd').textContent = fmtPct(m.max_drawdown);
+  $('m_sharpe').textContent = m.sharpe?.toFixed(2) ?? '--';
+  $('m_win').textContent = fmtPct(m.win_rate);
+  $('m_trades').textContent = m.num_trades ?? '--';
+  $('m_bh').textContent = fmtPct(m.buyhold_return);
+  const els = ['m_total','m_annual','m_dd','m_bh'];
+  els.forEach(id=>{ const el=$(id); el.classList.remove('up','down');
+    const v = parseFloat(el.textContent); if(!isNaN(v)) el.classList.add(v>=0?'up':'down'); });
+  $('m_dd').classList.remove('up'); $('m_dd').classList.add('down');
+}
+
+function renderEquity(c){
+  eqChart.setOption({
+    tooltip:{ trigger:'axis' }, legend:{ data:['策略权益','买入持有'], textStyle:{color:'#8b97ad'} },
+    grid:{ left:60, right:20, top:40, bottom:40 },
+    xAxis:{ type:'category', data:c.dates, axisLabel:{ color:'#8b97ad' } },
+    yAxis:{ type:'value', scale:true, axisLabel:{ color:'#8b97ad' } },
+    series:[
+      { name:'策略权益', type:'line', showSymbol:false, smooth:true, data:c.equity, lineStyle:{width:2,color:'#4f8cff'}, itemStyle:{color:'#4f8cff'} },
+      { name:'买入持有', type:'line', showSymbol:false, smooth:true, data:c.buyhold, lineStyle:{width:1.5,color:'#8b97ad',type:'dashed'} }
+    ]
+  });
+}
+
+function renderKline(c, trades){
+  const buy = trades.filter(t=>t.side==='BUY').map(t=>{ const dt=t.time.slice(0,10);
+    return { coord:[dt, t.price], value:'买', itemStyle:{color:'#2ebd85'} }; });
+  const sell = trades.filter(t=>t.side==='SELL').map(t=>{ const dt=t.time.slice(0,10);
+    return { coord:[dt, t.price], value:'卖', itemStyle:{color:'#f6465d'} }; });
+  $('klineTitle').textContent = `行情与买卖信号（${$('symSel').value} / ${$('stratSel').value}）`;
+  klChart.setOption({
+    tooltip:{ trigger:'axis' }, legend:{ data:['K线'], textStyle:{color:'#8b97ad'} },
+    grid:{ left:60, right:20, top:40, bottom:40 },
+    xAxis:{ type:'category', data:c.dates, axisLabel:{ color:'#8b97ad' } },
+    yAxis:{ type:'value', scale:true, axisLabel:{ color:'#8b97ad' } },
+    series:[{
+      name:'K线', type:'candlestick', data:c.ohlc,
+      itemStyle:{ color:'#2ebd85', color0:'#f6465d', borderColor:'#2ebd85', borderColor0:'#f6465d' },
+      markPoint:{ symbolSize:12, data:[...buy, ...sell] }
+    }]
+  });
+}
+
+function renderTrades(trades){
+  const body = $('tradeBody');
+  if(!trades.length){ body.innerHTML = '<tr><td colspan="7" style="color:var(--sub)">暂无记录</td></tr>'; return; }
+  body.innerHTML = trades.slice(0,100).map(t=>`<tr>
+    <td>${t.time}</td><td>${t.symbol}</td>
+    <td><span class="tag ${t.side==='BUY'?'buy':'sell'}">${t.side==='BUY'?'买入':'卖出'}</span></td>
+    <td>${t.qty}</td><td>$${t.price.toFixed(2)}</td>
+    <td class="${t.pnl>0?'up':(t.pnl<0?'down':'')}">${t.pnl? (t.pnl>0?'+':'')+t.pnl.toFixed(2):'--'}</td>
+    <td>${t.reason}</td></tr>`).join('');
+}
+
+async function pollState(){
+  try{
+    const s = await api('/api/state');
+    const b = $('statusBadge');
+    b.textContent = s.running ? '运行中' : '已停止';
+    b.className = 'badge ' + (s.running?'on':'off');
+    $('equityVal').textContent = '$'+fmtNum(s.equity);
+    $('cashVal').textContent = '现金 $'+fmtNum(s.cash);
+    const pos = s.positions || {};
+    const keys = Object.keys(pos);
+    $('posBody').innerHTML = keys.length ? keys.map(k=>`<tr><td>${k}</td><td>${pos[k].qty}</td><td>$${pos[k].avg_price.toFixed(2)}</td></tr>`).join('')
+      : '<tr><td colspan="3" style="color:var(--sub)">暂无持仓</td></tr>';
+    if(s.last_error) showErr('自动交易告警: '+s.last_error);
+  }catch(e){ /* 服务未启动时静默 */ }
+}
+
+init();
+</script>
+</body>
+</html>
